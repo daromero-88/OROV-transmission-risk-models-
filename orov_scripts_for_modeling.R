@@ -6,9 +6,22 @@
   #'  Luis Osorio-Olvera 
   #'  
   #' The following functions and scripts will allow the user to replicate 
-  #' the models and simulations presented in the manuscript: 
+  #' the models presented in the manuscript: 
   #' "Transmission Risk of Oropouche fever in the Americas"
   #' 
+  #' The models include: 
+  #' Hypervolumes
+  #' Convex Hulls
+  #' Jacknife for Hypervolumes
+  #' Jacknife for Convex hulls
+  #' 
+  #' The script also includes the filtered points used for creating the models 
+  #' and the environmental predictors (raw and principal components used)
+  #' 
+  #' The script replicates the results using the entire America continent 
+  #' for creating the models and estimating the occurrence contribution.
+  #' If needed, environmental predictors can be changed in order to obtain 
+  #' models for each studied area presented (see main text and supplementary material)
   
   --------------------------------------------------------
   
