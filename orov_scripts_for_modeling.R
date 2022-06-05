@@ -14,96 +14,125 @@
   
 #LIBRARIES-----------------------------------------------
 
-#Spatial analysis and niche models
+#Spatial analysis
 library(raster)
 library(sp)
 library(rgeos)
 library (rgdal)
 library (maptools)
 library(mapdata)
-library (kuenm)
-library (dismo)
 library(spThin)
-library (dbscan)
 
 #Hypervolumes
-#library (rgl)
 library (Rcpp)
 library (hypervolume)
 
-#to use the check.in.range function, presence of values in one dimension
+#To use the check.in.range function, presence of values in one dimension
 library (spatstat.utils)
 
-#for functions provided by Luis Osorio-Olvera: 
+#For functions provided by Luis Osorio-Olvera: 
 library(rgl)
 library(geometry)
 library(ptinpoly)
 
-#for evaluation in pair-wise dimensions: 
+#For evaluation in pair-wise dimensions: 
 library(concaveman)
 library(sp)
 
-#graphics: 
-library(ggplot2)
+
+#WORKING DIRECTORY-----------------------------
+
+#change working directory accordingly to your needs: 
+
+setwd ('/Users/daniel/Documents/OROPUCHE/PREDICTION/NEW_PROJ_2/_MANUSCRIPT1/DATA_GITHUB')
 
 
 #DATA----------------------------------------------------
+
+#WorldShape 
+data("wrld_simpl", package = "maptools")
+WGS84 = crs(wrld_simpl) # geographic projection
+
+#Occurrences:
+oro_thin = read.csv ('oro2_thin_thin1.csv')
+
+#Environmental predictors
+#Raw climatic predictors: 
+
+#buffer area
+buf_land_ras = stack (list.files ('./raw_predictors/buf_land_ENVS', full.names = T, pattern = '.asc'))
+names (buf_land_ras)
+
+#South America
+sa1 = stack (list.files ('./raw_predictors/sa1', full.names = T, pattern = '.asc'))
+names (sa1)
+
+#Americas continent 
+amr1 = stack (list.files('./raw_predictors/amr1', full.names = T, pattern = '.asc'))
+names (amr1)
+
+
+#Principal components: 
+
+#Buffer area: 
+pca_buff_res = read.table ('./PCs/1_pca_buff/Initial/pca_results.txt', header = T, sep = '\t') #PCA output
+pca_buff = stack(list.files('./PCs/1_pca_buff/Initial', full.names = T, pattern = 'asc')) #reading five PCs
+pca_buf2 = pca_buff[[c(1, 2, 3)]] #selecting three first PCs
+names (pca_buf2)
+
+#South America: 
+pca_sa_res = read.table ('./PCs/1_pca_sa/Initial/pca_results.txt', header = T, sep = '\t')
+pca_sa = stack(list.files('./PCs/1_pca_sa/Initial', full.names = T, pattern = 'asc'))
+pca_sa2 = pca_sa[[c(1, 2, 3)]]
+names (pca_sa2)
+
+#The Americas continent: 
+pca_amr_res = read.table ('./PCs/1_pca_amr/Initial/pca_results.txt', header = T, sep = '\t')
+pca_amr = stack(list.files('./PCs/1_pca_amr/Initial', full.names = T, pattern = 'asc'))
+pca_amr2 = pca_amr[[c(1, 2, 3)]]
+names (pca_amr2)
 
 
 #FUNCTIONS-----------------------------------------------
 
 #FUNCTION TO DEVELOP THREE DIMENSIONAL CONVEX HULLS--------------------------- 
 
-####NEEDED REVIEW######
-
 #'Provided by Luis Osorio-Olvera,
 #'Modified by Daniel Romero-Alvarez,
 
 convexhull3d <- function(data,test_points=NULL,plot=F,centroid=NULL, background = NULL){
   if(dim(data)[2]==3){
-    # Codigo para graficar el convexhull 
+    # Code for creating the convex hull 
     ch_data = convhulln(data, output.options = 'FA')  #recover indexes that define the convex hull, and with FA, it recovers the volume and other attributes
     ts.surf1 <- t(ch_data$hull) 
     
-    convexhull_faces <- cbind(data[ts.surf1,1],
+    convexhull_faces <- cbind(data[ts.surf1,1], #obtaining the vertices of the hull in the parameter space
                               data[ts.surf1,2],
-                              data[ts.surf1,3]) #obtaining the vertices of the hull in the parameter space
+                              data[ts.surf1,3]) 
     
-    #alphashp <- ashape3d(xyzmatrix(data),pert = T,
-    #                     alpha = 130)
-    
-    #this ifelse portion is defined because the centroid can be defined in the function! 
+    #this ifelse portion is defined because the centroid should be defined in the function! 
     if(is.null(centroid)){
       centroide <- colSums(convexhull_faces)/(dim(convexhull_faces)[1])
     }else{
       centroide <- centroid
     }
     
-    #start plotting if the function recommends:   
+    #Plotting:   
     if(plot){
-      #convex_mesh <- as.mesh3d(alphashp)
       convex_mesh <- tmesh3d(
         vertices = t(data),
         indices = ts.surf1,
         homogeneous = FALSE)
       
       plot3d(data,size=5)
-      plot3d(convexhull_faces,type="p", size=10,col="blue",add=T) #the vertices
-      #plot3d(convexhull_faces,type="s",alpha = 0.3,size=0.6,col="blue",add=T) #the vertices, original by LOO
-      #convex1 <-  rgl.triangles(convexhull_faces,
-      #                          alpha=0.1,col=rgb(1,0,0.3))
-      
+      plot3d(convexhull_faces,type="p", size=10,col="blue",add=T) # plotting the vertices
+ 
       wire3d(convex_mesh, col = 4)
-      # spheres3d(x=centroide[1], #theoretically this creates spheres but I am not sure
-      #           y = centroide[2],
-      #           z = centroide[3],
-      #           col="blue",
-      #           radius = 0.085,add=T)
-    }
+     }
     
   }
   
-  #Are evaluating testing points in the hull: 
+  #Are evaluating testing points inside the hull?: 
   if(dim(test_points)[1]>=1 && dim(test_points)[2]==3){
     in_convex <- pip3d(Vertices = as.matrix(data),
                        Faces = t(ts.surf1),
@@ -118,7 +147,8 @@ convexhull3d <- function(data,test_points=NULL,plot=F,centroid=NULL, background 
                                                          test_points[x,])))
     dconvex <- data.frame(dist_eucli,in_convex)
   }
-  #Are background points in the hull: 
+  
+  #Where are the background points in the hull?: 
   if(dim(background)[1]>1 && dim(background)[2]==3){
     in_convex_bc <- pip3d(Vertices = as.matrix(data),
                           Faces = t(ts.surf1),
@@ -133,18 +163,18 @@ convexhull3d <- function(data,test_points=NULL,plot=F,centroid=NULL, background 
                                                             background[x,])))
     dconvex_bc <- data.frame(dist_eucli_bc,in_convex_bc)
     
+    #Collecting results: the centroid of the 3d hull, the list of evaluating points, the volume of the hull, the list of background points
     results <- list(centroid=centroide,
                     testing = dconvex, 
                     vol = ch_data[3], 
                     backgroound = dconvex_bc)
-    #the centroid of the 3d hull, the list of evaluating points, the volume of the hull, the list of background points
   }
   
   return(results)
 }
 
-#measuring Euclidean distance: 
-euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2)) #we might eliminate that 'sum'
+#measuring Euclidean distances: 
+euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2)) 
 
 
 #SCRIPTS-------------------------------------------------
@@ -152,28 +182,24 @@ euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2)) #we might eliminate that '
 
 #HYPERVOLUME: OBSERVED MODEL, CALIBRATION LOOP, EVALUATION STATS, MODELS---------------
 
-#climates in buffer: 
-names (amr1)
-amr2 = amr1[[c(1, 15, 4)]]
-plot(amr2[[1]])
-plot(amr2[[2]])
-plot(amr2[[3]])
+#PCs in the Americas: 
+pca_amr2
 
-#original points
-clusters7 = cbind (ID1 = 1:nrow (clusters), clusters) #adding ID for tracking points 
+#Original points
+oro_thin 
 
-#extracting values considering rasters provided, raw data for the hypervolume function: 
-clusters8 = data.frame(cbind (clusters7[,1:3], extract(amr2, clusters7[,2:3])))
+#Extracting values considering rasters provided, raw data for the hypervolume function: 
+clusters8 = data.frame(cbind (oro_thin[,1:4], extract(pca_amr2, oro_thin[,3:4])))
 
 #hypervolume (svm) with provided information --> values of each environmental layer at each point: 
-svm_amr = hypervolume_svm(data = clusters8[,4:6])
+svm_amr = hypervolume_svm(data = clusters8[,5:7])
 plot (svm_amr)
 
 #total volume: 
 svm_amr_tvol = svm_amr@Volume #obtaining the volumne of the model 
 
 #Projecting to geography: 
-svm_amr_g = hypervolume_project (hv = svm_amr,rasters = amr2, type = "inclusion")
+svm_amr_g = hypervolume_project (hv = svm_amr,rasters = pca_amr2, type = "inclusion")
 plot (svm_amr_g) #plotting projected model 
 
 #total number of pixels: 
@@ -184,10 +210,10 @@ svm_amr_tpxs = nrow(svm_amr_pxs[which (svm_amr_pxs[,3]==1),]) #colleting only th
 
 #writing results for the observed model, environmental dataframe:
 #environmental values of the model
-write.csv (svm_amr@RandomPoints, paste ('./hypervolume_all_points/jknife/hvamr_clim_tot_e','.csv', sep = ''), row.names = F)
+write.csv (svm_amr@RandomPoints, paste ('./HV_results/hvamr_pca_tot_e','.csv', sep = ''), row.names = F)
 
 #writing results for the observed model, raster file:
-writeRaster(svm_amr_g, filename = paste ('./hypervolume_all_points/jknife/hvamr_clim_tot_g', sep = ''), format = 'ascii',
+writeRaster(svm_amr_g, filename = paste ('./HV_results/hvamr_pca_tot_g', sep = ''), format = 'ascii',
             bylayer = T, suffix = paste ('hvamr_clim_tot_g', j, sep = ''), overwrite = T,
             NAflag = -9999)
 
@@ -207,11 +233,11 @@ for (j in 1:50){
   #subsetting database in 70 calibration, 30 evaluation: 
   eval30 = clusters8 [sample(nrow(clusters8),round(nrow(clusters8)*0.30)),]
   #dim(eval30)
-  cal70 = clusters8 [!(clusters8$ID1 %in% eval30$ID1),]
+  cal70 = clusters8 [!(clusters8$ID %in% eval30$ID),]
   #dim(cal70)
   
-  cal70_val = extract (amr2, cal70[,2:3]) #values for model calibration
-  eval30_val = extract (amr2, eval30[,2:3]) #values for model evaluation
+  cal70_val = extract (pca_amr2, cal70[,3:4]) #values for model calibration
+  eval30_val = extract (pca_amr2, eval30[,3:4]) #values for model evaluation
   
   svm_e = hypervolume_svm(data = cal70_val) #calibrating the model, only three dimensions used here
   
@@ -236,7 +262,7 @@ for (j in 1:50){
   #lines(polygons2)
   #points (eval30_val[,c(2,3)], col = 'red')
   
-  red1_res = mean(c(mean (ids_in1), mean (ids_in2), mean (ids_in3))) #obtaing the mean across dimensions 
+  red1_res = mean(c(mean (ids_in1), mean (ids_in2), mean (ids_in3))) #obtaing the mean across dimensions, meassure of performance in E
   
   eval_in_e4[[length(eval_in_e4)+1]] = red1_res #collecting the mean as a list 
   
@@ -250,13 +276,13 @@ for (j in 1:50){
   
   ##If environmental points for each replicate are needed, the following lines write that data:
   ##writing the random points around the occurrences (the environmental buffer)
-  #write.csv (svm_e@RandomPoints, paste ('./hypervolume_all_points/jknife/env_sa_', j, '.csv', sep = ''), row.names = F)
+  #write.csv (svm_e@RandomPoints, paste ('./HV_results/env_sa_', j, '.csv', sep = ''), row.names = F)
   
   #Projection to geographic space: 
-  svm_g = hypervolume_project (hv = svm_e, rasters = amr2, type = "inclusion") #using the corresponding rasters! 
+  svm_g = hypervolume_project (hv = svm_e, rasters = pca_amr2, type = "inclusion") #using the corresponding rasters! 
   
   ##If needed, you can write the geographic rasters for each replicate
-  #writeRaster(svm_g, filename = paste ('./hypervolume_all_points/jknife/rep_sa_', j, sep = ''), format = 'ascii',
+  #writeRaster(svm_g, filename = paste ('./HV_results/rep_sa_', j, sep = ''), format = 'ascii',
   #            bylayer = T, suffix = paste ('rep_sa_', j, sep = ''), overwrite = T,
   #            NAflag = -9999)
   
@@ -266,7 +292,7 @@ for (j in 1:50){
   r_t_p = rasterToPoints(svm_g) #transforming raster to points 
   prop_pxs = nrow(r_t_p[which(r_t_p[,3]==1),])/svm_amr_tpxs #obtaining the proportion of suitable pixels per replicate as function of the full raster 
   
-  tst = mean(extract (svm_g, eval30[,2:3])) #the mean of values across the evaluation points 
+  tst = mean(extract (svm_g, eval30[,3:4])) #the mean of values across the evaluation points 
   eval_in_g4[[length(eval_in_g4)+1]] = tst #collecting the mean as a list 
  
   #Dataframe of replicates data in the geographic space (G): 
@@ -318,12 +344,12 @@ re_svm_g4 = c(mean = mean (unlist (eval_in_g4)), #evaluation stat
               cor_pe = core4_g$p.value) #performance for niche: 
 
 #Writing statistics dataframe
-write.csv (re_svm_g4, './hypervolume_all_points/jknife/stat_svm_g4.csv', row.names = T)
-write.csv (re_svm_e4, './hypervolume_all_points/jknife/stat_svm_e4.csv', row.names = T)
+write.csv (re_svm_g4, './HV_results/stat_svm_g4.csv', row.names = T)
+write.csv (re_svm_e4, './HV_results/stat_svm_e4.csv', row.names = T)
 
 #Writing replicates dataframe
-write.csv (eval_in_e4_df, './hypervolume_all_points/jknife/svm_e4_df.csv', row.names = T)
-write.csv (eval_in_g4_df, './hypervolume_all_points/jknife/svm_g4_df.csv', row.names = T)
+write.csv (eval_in_e4_df, './HV_results/svm_e4_df.csv', row.names = T)
+write.csv (eval_in_g4_df, './HV_results/svm_g4_df.csv', row.names = T)
 
 #Writing rasters: 
 
@@ -339,7 +365,7 @@ nm5 = c('median', 'low', 'high', 'range', 'sum') #names for the stack
 #Wrting the rasters in a loop: 
 
 for (jj in 1:5){
-  writeRaster(a_all3[[jj]], filename = paste ('./hypervolume_all_points/jknife/hvamrclim_', nm5[jj], sep = ''), format = 'ascii',
+  writeRaster(a_all3[[jj]], filename = paste ('./HV_results/ras_output/', nm5[jj], sep = ''), format = 'ascii',
               bylayer = T, suffix = paste ('hvamrclim_', j, sep = ''), overwrite = T,
               NAflag = -9999)
 }
@@ -351,24 +377,22 @@ for (jj in 1:5){
 rp_pca_amr2= rasterToPoints(pca_amr2)
 
 #Model using all the points: 
-clusnich_amr = cbind (clusters2[,1:3],extract(pca_amr2, clusters2[,2:3])) #adding all the data together
+clusnich_amr = cbind (oro_thin[,1:4],extract(pca_amr2, oro_thin[,3:4])) #adding all the data together
 
-chlfull_amr=  convexhull3d(data = clusnich_amr[,4:6], 
-                           test_points= clusnich_amr[,4:6], #same points as in previous line 
-                           plot = T, 
+chlfull_amr=  convexhull3d(data = clusnich_amr[,5:7], 
+                           test_points= clusnich_amr[,5:7], #same points as in previous line 
+                           plot = T, #when T, it will depict the model in 3d 
                            background = rp_pca_amr2[,3:5]) #add the background points 
 
-#checking background points inside the hull: 
-
+#checking points inside the hull: 
 points3d(rp_pca_amr2[,3:5][chlfull_amr[[4]]$in_convex_bc==1,],
          col="red",size=5)
 
 #checking background points outside the hull: 
-
 points3d(rp_pca_amr2[,3:5][chlfull_amr[[4]]$in_convex_bc==0,],
          col="grey",size=1)
 
-chl_amr_vol = chlfull_amr[[3]][[1]] #collecing the volume of the convex hull 
+chl_amr_vol = chlfull_amr[[3]][[1]] #collecting the volume of the convex hull 
 
 #Creating a database with all the data (important step, otherwise some data is going to be lost): 
 nicha_amr_ex = data.frame(rp_pca_amr2[chlfull_amr[[4]]$in_convex_bc==0,]) #points outside the hull 
@@ -380,14 +404,14 @@ nicha_amr_df = rbind (nicha_amr_ex, nicha_amr_in) #combining the dataframe
 
 #writing the dataframe complete dataframe: points and values
 #writing results for the observed model, environmental dataframe:
-write.csv (nicha_amr_df,'./hypervolume_all_points/jknife_nicheA2/chamr_pca_tot_e.csv', row.names = F)
+write.csv (nicha_amr_df,'./CH_results/chamr_pca_tot_e.csv', row.names = F)
 
 #Projection to geography: 
 amr_ras = rasterize (nicha_amr_df[,1:2], pca_amr2[[1]], field = nicha_amr_df[,6])
 amr_spx = dim(nicha_amr_in)[1] #total number of suitable pixels
 
 #writing results for the observed model, raster file:
-writeRaster(amr_ras, filename = './hypervolume_all_points/jknife_nicheA2/chamr_pca_tot_g', format = 'ascii',
+writeRaster(amr_ras, filename = './CH_results/chamr_pca_tot_g', format = 'ascii',
             bylayer = T, suffix = 'chamr_pca_tot_g', overwrite = T,
             NAflag = -9999)
 
@@ -404,20 +428,18 @@ for (j in 1:50){
   #subsetting database in 70 calibration, 30 evaluation: 
   eval30 = clusnich_amr [sample(nrow(clusnich_amr),round(nrow(clusnich_amr)*0.30)),]
   #dim(eval30)
-  cal70 = clusnich_amr [!(clusnich_amr$ID1 %in% eval30$ID1),]
+  cal70 = clusnich_amr [!(clusnich_amr$ID %in% eval30$ID),]
   #dim(cal70)
   
   #Convex hull in environmental space: 
-  
-  ee = convexhull3d(data = cal70[,4:6], 
-                    test_points= eval30[,4:6], #I should be able to not add this ####REVIEW THIS####
+  ee = convexhull3d(data = cal70[,5:7], 
+                    test_points= eval30[,5:7], 
                     plot = F , 
                     background = rp_pca_amr2[,3:5])
   
   per_ee = mean (ee$testing[,2]) #collecting evaluation statistic
   
   #checking points inside/outside convex hull: 
-  
   # points3d(eval30[,4:6][ee[[2]]$in_convex==1,],
   #          col="red",size=5)
   # 
@@ -452,7 +474,7 @@ for (j in 1:50){
   #points(eval30[,2:3], col ='red')
 
   #Evaluation statistics in geography: 
-  tst2 = mean (extract (amr_ras, eval30[,2:3])) #collecting statistic in geography
+  tst2 = mean (extract (amr_ras, eval30[,3:4])) #collecting statistic in geography
   eval_ch_g3[[length(eval_ch_g3)+1]] = tst2 #collecting statistic as a list 
   
   #Dataframe of replicates in the geography (G): 
@@ -504,12 +526,12 @@ re_chl_g3 = c(mean = mean (unlist (eval_ch_g3)),
               cor_pe = core3_chg$p.value) 
 
 #Writing statistics dataframe
-write.csv (re_chl_e3, './hypervolume_all_points/jknife_nicheA2/stat_chl_e3.csv', row.names = T)
-write.csv (re_chl_g3, './hypervolume_all_points/jknife_nicheA2/stat_chl_g3.csv', row.names = T)
+write.csv (re_chl_e3, './CH_results/stat_chl_e3.csv', row.names = T)
+write.csv (re_chl_g3, './CH_results/stat_chl_g3.csv', row.names = T)
 
 #Writing replicates dataframes
-write.csv (eval_ch_e3_df, './hypervolume_all_points/jknife_nicheA2/chl_e3_df.csv', row.names = T)
-write.csv (eval_ch_g3_df, './hypervolume_all_points/jknife_nicheA2/chl_g3_df.csv', row.names = T)
+write.csv (eval_ch_e3_df, './CH_results/chl_e3_df.csv', row.names = T)
+write.csv (eval_ch_g3_df, './CH_results/chl_g3_df.csv', row.names = T)
 
 #Definitive rasters: 
 
@@ -525,20 +547,20 @@ nm5 = c('median', 'low', 'high', 'range', 'sum') #names for the rasters
 #Wrting the rasters in a loop: 
 
 for (jj in 1:5){
-  writeRaster(b_all3[[jj]], filename = paste ('./hypervolume_all_points/jknife_nicheA2/chamr_pca_', nm5[jj], sep = ''), format = 'ascii',
+  writeRaster(b_all3[[jj]], filename = paste ('./CH_results/ras_output/', nm5[jj], sep = ''), format = 'ascii',
               bylayer = T, suffix = paste ('chamr_pca_', j, sep = ''), overwrite = T,
               NAflag = -9999)
 }
 
 
-#OCCURRENCE CONTRIBUTION: JACKKNIFE----------------------------------
+#OCCURRENCE CONTRIBUTION: JACKKNIFE IN CONVEX HULLS----------------------------------
 
 #Select the raster for the full model: 
-fm3 = raster ('./hypervolume_all_points/jknife_nicheA2/resuilts_amr_PCA/niche_amr_ras_g.asc')
+fm3 = raster ('./CH_results/chamr_pca_tot_g.asc')
 
 #Raster stacks for calibration and projection 
 pca_amr2
-rp_pca_amr2
+rp_pca_amr2 = rasterToPoints(pca_amr2)
 
 #Total volumne obtained wih previous codes 
 chpca_amr_tot_vol = 15.32279 #from results table 1, main text
@@ -547,7 +569,7 @@ chpca_amr_tot_vol = 15.32279 #from results table 1, main text
 chpca_amr_tot_pxls = 98754 #from results table 1, main text
 
 #Database with occurrences and climatic values 
-jk_hvpca_amr = cbind (clusters2[,1:3],extract(pca_amr2, clusters2[,2:3]))
+jk_hvpca_amr = cbind (oro_thin[,1:4],extract(pca_amr2, oro_thin[,3:4]))
 
 eval_in_e_jk3 = list () #collecting bins in E
 eval_in_e_jk3_df = NULL #dataframe of results in E
@@ -561,8 +583,8 @@ for (j in 1:length(jk_hvpca_amr[,1])){
   cal_pts = jk_hvpca_amr [-j,]
   #dim(cal_pts)
   
-  ee = convexhull3d(data = cal_pts[,4:6], 
-                    test_points= eval_pt[,4:6], 
+  ee = convexhull3d(data = cal_pts[,5:7], 
+                    test_points= eval_pt[,5:7], 
                     plot = F, 
                     background = rp_pca_amr2[,3:5])
   
@@ -588,14 +610,13 @@ for (j in 1:length(jk_hvpca_amr[,1])){
   eval_in_e_jk3_df = rbind (eval_in_e_jk3_df, res_rw)
   
   #in geography: 
-  
   ee_ex = data.frame(rp_pca_amr2[ee[[4]]$in_convex_bc==0,])
   ee_in = data.frame(rp_pca_amr2[ee[[4]]$in_convex_bc==1,])
   ee_ex$ind = rep (0, length(ee_ex[,1]))
   ee_in$ind = rep (1, length(ee_in[,1]))
   ee_env = rbind (ee_ex, ee_in)
   
-  write.csv (ee_env, paste ('./hypervolume_all_points/jknife_nicheA2/ch_pca_amr_', j, '.csv', sep = ''), row.names = F)
+  #write.csv (ee_env, paste ('./JACKKNIFE_CH/ch_pca_amr_', j, '.csv', sep = ''), row.names = F)
   
   st_pxs = dim(ee_in)[1] #environmental rows 
   
@@ -603,20 +624,20 @@ for (j in 1:length(jk_hvpca_amr[,1])){
   amr_ras = rasterize (ee_env[,1:2], pca_amr2[[1]], field = ee_env[,6])
   
   ##writing the raster files (svm models):
-  writeRaster(amr_ras, filename = paste ('./hypervolume_all_points/jknife_nicheA2/repch_pca_amr_', j, sep = ''), format = 'ascii',
-              bylayer = T, suffix = paste ('repch_pca_amr_', j, sep = ''), overwrite = T,
-              NAflag = -9999)
+  #writeRaster(amr_ras, filename = paste ('./JACKKNIFE_CH/repch_pca_amr_', j, sep = ''), format = 'ascii',
+  #            bylayer = T, suffix = paste ('repch_pca_amr_', j, sep = ''), overwrite = T,
+  #            NAflag = -9999)
   
   # plot(amr_ras)
   # points(eval_pt[,2:3], col ='red')
   
   #evaluation
-  tst2 = extract (amr_ras, eval_pt[,2:3]) #extracting raster value, if it is inside = 1, otherwise = 0, the average will be the evaluation statistic
+  tst2 = extract (amr_ras, eval_pt[,3:4]) #extracting raster value, if it is inside = 1, otherwise = 0, the average will be the evaluation statistic
   eval_in_g_jk3[[length(eval_in_g_jk3)+1]] = tst2 #collecting if point was predicted or not
   
   res_geo = cbind (repl = j, 
-                   ev_long = eval_pt[,2], 
-                   ev_lat = eval_pt[,3], 
+                   ev_long = eval_pt[,3], 
+                   ev_lat = eval_pt[,4], 
                    perform = tst2, 
                    suit_pxls = st_pxs, 
                    proportion = st_pxs/chpca_amr_tot_pxls)
@@ -657,9 +678,11 @@ for (jj in test3[,6]){
 test3$cat = unlist(vc3)
 test_ord3 = test3[order(test3[,6]),]
 
+#Plotting the contribution of occurrences and mapping: 
 par(mfrow = c(1,2))
 plot (test_ord3[,6], col = c('black', 'blue','red')[test_ord3[,7]], pch = 16)
 plot (fm3)
+plot (wrld_simpl, add = T)
 points (test_ord3[,2:3], col= c('black', 'blue','red')[test_ord3[,7]], pch = 16, cex = 0.5)
 
 #correlation volume performance/pixels performance
@@ -685,12 +708,188 @@ re_svm_g_jk3 = c(mean = mean (unlist (eval_in_e_jk3)),
 #re_svm_past_g = mean (unlist (eval_in_g_past))
 #re_svm_past_e = mean (unlist (eval_in_e_past))
 
-write.csv (re_svm_g_jk3, './hypervolume_all_points/jknife_nicheA2/stat_svm_g_jk3.csv', row.names = T)
-write.csv (re_svm_e_jk3, './hypervolume_all_points/jknife_nicheA2/stat_svm_e_jk3.csv', row.names = T)
+write.csv (re_svm_g_jk3, './JACKKNIFE_CH/stat_svm_g_jk3.csv', row.names = T)
+write.csv (re_svm_e_jk3, './JACKKNIFE_CH/stat_svm_e_jk3.csv', row.names = T)
 
-write.csv (eval_in_e_jk3_df, './hypervolume_all_points/jknife_nicheA2/svm_e_jk3_df.csv', row.names = T)
-write.csv (eval_in_g_jk3_df, './hypervolume_all_points/jknife_nicheA2/svm_g_jk3_df.csv', row.names = T)
+write.csv (eval_in_e_jk3_df, './JACKKNIFE_CH/svm_e_jk3_df.csv', row.names = T)
+write.csv (eval_in_g_jk3_df, './JACKKNIFE_CH/svm_g_jk3_df.csv', row.names = T)
 
 
+#OCCURRENCE CONTRIBUTION: JACKKNIFE IN HYPERVOLUMES----------------------------------
+
+#Example with Hypervolume definitive model: 
+
+#full model
+fm1 = raster('./HV_results/hvamr_pca_tot_g.asc')
+
+#envs: 
+pca_amr2
+
+#tot_vol
+pca_amr_tot_vol = 20.15296 #from results table
+
+#tot_pxls
+pca_amr_tot_pxls = 141431 #from results table
+
+#database for the current excercise 
+jk_amr = cbind (oro_thin[,1:4],extract(pca_amr2, oro_thin[,3:4]))
+
+eval_in_e_jk1 = list () #collecting bins in E
+eval_in_e_jk1_df = NULL #dataframe of results in E
+eval_in_g_jk1 = list () #collecting bins in G 
+eval_in_g_jk1_df = NULL #dataframe of results in G
+
+
+for (j in 1:length(jk_amr[,1])){ #jackknife will loop for the total number of occurrences
+  #subsetting database in n-1 for calibration and evaluation: 
+  eval_pt = jk_amr [j,]
+  #dim(eval_pt)
+  cal_pts = jk_amr [-j,]
+  #dim(cal_pts)
+  
+  svm_e = hypervolume_svm(data = cal_pts[,5:7]) #calibrating the model, only three dimensions
+  
+  #Luis approach, for details check index: APPROACH LUIS OSORIO
+  #dimen1: 
+  polygons1 <- concaveman(as.matrix(svm_e@RandomPoints[,1:2]),concavity = 2) #creates a concave matrix, higher parameters less overfitted
+  ids_in1 <- point.in.polygon(eval_pt[,5],eval_pt[,6],polygons1[,1],polygons1[,2]) 
+  
+  #dimen2: 
+  polygons2 <- concaveman(as.matrix(svm_e@RandomPoints[,2:3]),concavity = 2) #creates a concave matrix, higher parameters less overfitted
+  ids_in2 <- point.in.polygon(eval_pt[,6],eval_pt[,7],polygons2[,1],polygons2[,2]) 
+  
+  #dimen3: 
+  polygons3 <- concaveman(as.matrix(svm_e@RandomPoints[,c(1,3)]),concavity = 2) #creates a concave matrix, higher parameters less overfitted
+  ids_in3 <- point.in.polygon(eval_pt[,5],eval_pt[,7],polygons3[,1],polygons3[,2]) 
+  
+  # plot (polygons1, xlim = c(0, 10), ylim = c(-5, 5)) 
+  # lines(polygons1)
+  # points (eval_pt[,c(4,5)], col = 'red', cex= 0.5, pch = 16)
+  
+  red1_res = mean(c(mean (ids_in1), mean (ids_in2), mean (ids_in3)))
+  
+  eval_in_e_jk1[[length(eval_in_e_jk1)+1]] = red1_res #collecting when the algorithm is collecting points in E
+  
+  #dataframe of results
+  df_e = cbind (replicate = j, #coordinate excluded from the analysis
+                ev_long = eval_pt[,3],
+                ev_lat = eval_pt[,4],
+                perform = red1_res, #addding if point excluded was obtained
+                #past = mn2, #adding values from the points of the past 
+                vol = svm_e@Volume, #collecting volume of replicate niche
+                proportion = svm_e@Volume/pca_amr_tot_vol) #calculating proportion vs volume all points
+  
+  eval_in_e_jk1_df = rbind (eval_in_e_jk1_df,df_e) #adding info to the dataframe
+  
+  ##writing the random points around the occurrences (the environmental buffer)
+  #write.csv (svm_e@RandomPoints, paste ('./JACKKNIFE_HV/env_amr_', j, '.csv', sep = ''), row.names = F)
+  
+  #projection to G
+  svm_g = hypervolume_project (hv = svm_e, rasters = pca_amr2, type = "inclusion") #using the first three PCA rasters! 
+  
+  ##writing the raster files (svm models):
+  #writeRaster(svm_g, filename = paste ('./JACKKNIFE_HV/rep_amr_', j, sep = ''), format = 'ascii',
+  #            bylayer = T, suffix = paste ('rep_amr_', j, sep = ''), overwrite = T,
+  #            NAflag = -9999)
+  
+  #evaluation in G jackknife present points
+  r_t_p = rasterToPoints(svm_g) #matrix counting 0s and 1s, 
+  prop_pxs = nrow(r_t_p[which(r_t_p[,3] ==1),])/pca_amr_tot_pxls #total pixels calculated as suitable with n-1 niche divided total pixels of niche using all points
+  
+  tst = mean(extract (svm_g, eval_pt[,3:4])) #extracting raster value, if it is inside = 1, otherwise = 0, the average will be the jackknife evaluation statistic
+  eval_in_g_jk1[[length(eval_in_g_jk1)+1]] = tst #collecting if point was predicted or not
+  
+  # #eval in G with points of the past 
+  # m1 = mean (extract (svm_g, eval_p[,2:3])) #0 = absent, 1 = present 
+  # eval_in_g_past[[length(eval_in_g_past)+1]] = m1
+  # 
+  #results dataframe
+  df_g = cbind (replicate = j, #coordinate excluded from the analysis
+                ev_long = eval_pt[,3],
+                ev_lat = eval_pt[,4],
+                perform = tst, #if point excluded was correctly predicted by the n-1 model
+                #past = m1, #adding if the points of the past were obtained in each iteration
+                tot_suit_pxs = nrow(r_t_p[which(r_t_p[,3] ==1),]), #number of suitable pixels
+                prop_pxs = prop_pxs) #proportion of suitable pixels as compared with the model with all the points
+  
+  eval_in_g_jk1_df = rbind (eval_in_g_jk1_df,df_g)
+}
+
+
+#checking e vs g: 
+#frequencies
+par(mfrow = c(2,1))
+plot (eval_in_e_jk1_df[,4], type = 'h')
+points (eval_in_e_jk1_df[,6], col = 'blue', pch = 15)
+
+plot (eval_in_g_jk1_df[,4], type = 'h')
+points (eval_in_g_jk1_df[,6], col = 'blue', pch = 15)
+
+#dividing the database per contribution occs: 
+test = data.frame(eval_in_g_jk1_df)
+
+#reading and visualization of this table in the next section... 
+
+#correlation volume performance/pixels performance
+plot (eval_in_e_jk1_df[,5], eval_in_e_jk1_df[,4])
+plot (eval_in_g_jk1_df[,5], eval_in_g_jk1_df[,4])
+
+core_e_jk1 = cor.test(eval_in_e_jk1_df[,5], eval_in_e_jk1_df[,4], method = 'pearson') #statistically significant
+core_g_jk1 = cor.test(eval_in_g_jk1_df[,5], eval_in_g_jk1_df[,4], method = 'pearson') #statistically significant
+
+#performance stat: 
+re_svm_e_jk1= c(mean = mean (unlist (eval_in_e_jk1)), 
+                sd = sd (unlist (eval_in_e_jk1)), 
+                vol = pca_amr_tot_vol, 
+                cor_perf_vol = core_e_jk1$estimate, 
+                cor_pe = core_e_jk1$p.value) #performance for niche: 
+
+re_svm_g_jk1 = c(mean = mean (unlist (eval_in_e_jk1)), 
+                 sd = sd (unlist (eval_in_g_jk1)), 
+                 pxls = pca_amr_tot_pxls, 
+                 cor_perf_vol = core_g_jk1$estimate, 
+                 cor_pe = core_g_jk1$p.value) #performance for niche: 
+
+#re_svm_past_g = mean (unlist (eval_in_g_past))
+#re_svm_past_e = mean (unlist (eval_in_e_past))
+
+write.csv (re_svm_g_jk1, './JACKKNIFE_HV/stat_svm_g_jk1.csv', row.names = T)
+write.csv (re_svm_e_jk1, './JACKKNIFE_HV/stat_svm_e_jk1.csv', row.names = T)
+
+write.csv (eval_in_e_jk1_df, './JACKKNIFE_HV/svm_e_jk1_df.csv', row.names = T)
+write.csv (eval_in_g_jk1_df, './JACKKNIFE_HV/svm_g_jk1_df.csv', row.names = T)
+
+#plotting and visualization: 
+test = read.csv ('./JACKKNIFE_HV/svm_g_jk1_df.csv', header = T)
+
+class(test)
+
+vc = list()
+
+for (jj in test[,7]){
+  if (jj>=1){
+    vc[[length(vc)+1]] = 1
+  }else{
+    if (jj<1 & jj>= 0.90){
+      vc[[length(vc)+1]] = 2
+    }else {
+      if (jj<0.90){
+        vc[[length(vc)+1]] = 3
+      }
+    }
+  }
+}
+
+unlist(vc)
+test$cat = unlist(vc)
+test2 = test[order(test[,7]),]
+
+par(mfrow = c(1,2))
+plot (test2[,7], col = c('black', 'blue','red')[test2[,8]], pch = 16, 
+      ylab = 'Proportion of suitable pixels', xlab = 'Points',
+      main = 'Occurrence contribution')
+plot (fm1)
+plot (wrld_simpl, add = T)
+points (test[,3:4], col= c('black', 'blue','red')[test[,8]], pch = 16, cex = 1)
 
 
