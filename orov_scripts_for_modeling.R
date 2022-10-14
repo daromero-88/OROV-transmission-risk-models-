@@ -1400,7 +1400,8 @@ hv1 = raster ('./DEF_MODEL/both_predictors.asc')
 #population data
 #obtained from: https://hub.worldpop.org/geodata/summary?id=24777
 
-pops = raster ('./pop_in_risk/ppp_2020_1km_Aggregated.tif')
+#pops = raster ('./pop_in_risk/ppp_2020_1km_Aggregated.tif') #**
+#**please download from the corresponding link since such big files cannot be uploaded to GITHUB
 
 #cropping to the studied area
 
