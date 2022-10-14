@@ -36,6 +36,9 @@ library (maptools)
 library(mapdata)
 library(spThin)
 
+#Spetial shape objects for plotting
+library (sf)
+
 #Hypervolumes
 library (Rcpp)
 library (hypervolume)
@@ -52,6 +55,9 @@ library(ptinpoly)
 library(concaveman)
 library(sp)
 
+#lineplots: 
+library (ggplot2)
+
 
 #WORKING DIRECTORY-----------------------------
 
@@ -62,14 +68,52 @@ setwd ('/Users/daniel/Documents/OROPUCHE/PREDICTION/NEW_PROJ_2/_MANUSCRIPT1/DATA
 
 #DATA----------------------------------------------------
 
+#OCURRENCES: 
+#Curated points:
+oro_thin = read.csv ('oro2_thin_thin1.csv')
+
+
+#SHAPES: 
 #WorldShape 
 data("wrld_simpl", package = "maptools")
 WGS84 = crs(wrld_simpl) # geographic projection
 
-#Occurrences:
-oro_thin = read.csv ('oro2_thin_thin1.csv')
+#unique regions of the world 
+unique (wrld_simpl@data$REGION)
 
-#Environmental predictors
+#subsetting to the region of the Americas: 
+ss = subset (wrld_simpl, REGION == '19') 
+
+#specific shapes for the Americas: 
+#Americas downloaded from 
+#https://tapiquen-sig.jimdofree.com/english-version/free-downloads/americas/
+amr = readOGR ('./SHAPES/Americas/Americas.shp')
+amr = buffer(amr, width = 0.1, dissolve = T)
+
+#America provinces: 
+provs_wr = readOGR ('./SHAPES/ne_10m_admin_1_states_provinces/ne_10m_admin_1_states_provinces.shp')
+
+provs_df = crop (provs_wr, amr) #an error will show up but should be ignored
+class(provs_df)
+
+
+#Complete South America 
+#https://tapiquen-sig.jimdofree.com/english-version/free-downloads/south-america/
+sa1 = readOGR('./SHAPES/south_america/South_America.shp')
+sa1 = buffer(sa1, width = 0.1, dissolve = T) #adding some degrees of buffer to capture all the pixels
+
+#Impartial bufer: 
+buff = readOGR ('./SHAPES/buffer/buffer1.shp')
+
+
+#visualization of occurrences: 
+plot (ss, col = '#dbdbdb')
+zoom(ss, col = '#dbdbdb', ext=drawExtent(), new=TRUE, useRaster=FALSE)
+points (oro_thin[,3:4], col = c('gold', 'red'), pch = c(16, 3), cex = 1.2)
+
+
+
+#ENVIRONMENTAL PREDICTORS: 
 #Raw climatic predictors: 
 
 #buffer area
@@ -872,6 +916,7 @@ write.csv (re_svm_e_jk1, './JACKKNIFE_HV/stat_svm_e_jk1.csv', row.names = T)
 write.csv (eval_in_e_jk1_df, './JACKKNIFE_HV/svm_e_jk1_df.csv', row.names = T)
 write.csv (eval_in_g_jk1_df, './JACKKNIFE_HV/svm_g_jk1_df.csv', row.names = T)
 
+
 #plotting and visualization: 
 test = read.csv ('./JACKKNIFE_HV/svm_g_jk1_df.csv', header = T)
 
@@ -905,4 +950,736 @@ plot (fm1)
 plot (wrld_simpl, add = T)
 points (test[,3:4], col= c('black', 'blue','red')[test[,8]], pch = 16, cex = 1)
 
+
+#POST MODELLING STEPS-------------------------------------------------
+
+#ENVIRONMENTAL VALUES IN OUTBREAK LOCALITIES--------------------------
+
+#DATA: 
+
+#points with localities with decreasing more than 10% the geographial output: 
+test2
+
+#environmental predictors of the Americas: 
+amr1
+
+#APPLICATION: 
+#transform in spatial point dataframe: 
+test3 = SpatialPointsDataFrame(coords = test2[,3:4], 
+                                data = test2,
+                               proj4string = WGS84)
+
+
+#creating buffer: 
+dist1 = 100000 #100 km = 100,000 meters #distant buffer
+
+buff_gen = buffer(test3, width = dist1, dissolve = F) 
+plot (buff_gen)
+
+
+#splitting buffers to obtain data: 
+all1 = buff_gen[-c(1:2),] #all points except the identified points (<0.90)
+
+north_occ = buff_gen[1,] #northern site 
+
+sout_occ = buff_gen[2,] #southern site
+
+#visualization
+plot (all1)
+plot (north_occ, col = 'blue', add =T)
+plot (sout_occ, col = 'red', add =T)
+
+
+#STATISTICS: 
+
+#Northern site: 
+t1 = crop (amr1, north_occ)
+t1 = mask (t1, north_occ)
+north_m = cellStats (t1, mean) #mean 
+north_sd =  cellStats (t1, sd) #standard deviation
+north_counts = dim(rasterToPoints(t1))[1] #counts
+catn = rep ('north',2) #category 
+
+north_res = data.frame (rbind (mean = north_m, sd = north_sd))
+
+#fixing for MERRACLIM corrections: 
+north_res$X5m_mean_00s_bio1 = north_res$X5m_mean_00s_bio1/10
+north_res$X5m_mean_00s_bio7 = north_res$X5m_mean_00s_bio7/10
+north_res$X5m_mean_00s_bio12 = north_res$X5m_mean_00s_bio12/100000
+
+#adding category 
+north_res$cat = catn
+
+
+#Southern site: 
+t2 = crop (amr1, sout_occ)
+t2 = mask (t2, sout_occ)
+south_m = cellStats (t2, mean) #mean 
+south_sd =  cellStats (t2, sd) #shiva
+south_counts = dim(rasterToPoints(t2))[1] #counts
+cats = rep ('south',2) #category
+
+south_res = data.frame (rbind (mean = south_m, sd = south_sd))
+
+#fixing for MERRACLIM corrections: 
+south_res$X5m_mean_00s_bio1 = south_res$X5m_mean_00s_bio1/10
+south_res$X5m_mean_00s_bio7 = south_res$X5m_mean_00s_bio7/10
+south_res$X5m_mean_00s_bio12 = south_res$X5m_mean_00s_bio12/100000
+
+#addding category 
+south_res$cat = cats
+
+
+
+#Averages: 
+t3 = crop (amr1, all1)
+t3 = mask (t3, all1)
+avgs_m = cellStats (t3, mean) #mean 
+avgs_sd =  cellStats (t3, sd) #sd
+avgs_counts = dim(rasterToPoints(t3))[1] #counts
+cata = rep ('average',2) #category 
+
+avgs_res = data.frame (rbind (mean = avgs_m, sd = avgs_sd))
+
+#fixing for MERRACLIM corrections: 
+avgs_res$X5m_mean_00s_bio1 = avgs_res$X5m_mean_00s_bio1/10
+avgs_res$X5m_mean_00s_bio7 = avgs_res$X5m_mean_00s_bio7/10
+avgs_res$X5m_mean_00s_bio12 = avgs_res$X5m_mean_00s_bio12/100000
+
+#addng category
+avgs_res$cat = cata
+
+
+#writing values: 
+write.csv (north_res, './env_values/north_res.csv', row.names = T)
+write.csv (south_res, './env_values/south_res.csv', row.names = T)
+write.csv (avgs_res, './env_values/avgs_res.csv', row.names = T)
+
+#VISUALIZATION OF POINT PLOTS WITH GGPLOT2-----------------------------------
+#plotting stuff including errors bars: 
+#overall dataset: 
+overdf = rbind (t(avgs_res), t(north_res), t(south_res))
+
+#eliminate category: 
+overdf = data.frame (overdf[-c(4,8,12),])
+
+#vector of categories for the new dataframe: 
+cat = c('Avg.', 'North','South')
+
+#BIO1 dataframe: 
+bio1= overdf[c(1,4,7),]
+bio1$cat = cat
+bio1$mean = as.numeric (as.character(bio1$mean))
+bio1$sd = as.numeric (as.character(bio1$sd))
+
+#BIO7 dataframe: 
+bio7= overdf[c(3,6,9),]
+bio7$cat = cat
+bio7$mean = as.numeric (as.character(bio7$mean))
+bio7$sd = as.numeric (as.character(bio7$sd))
+
+#BIO12 dataframe: 
+bio12= overdf[c(2,5,8),]
+bio12$cat = cat
+bio12$mean = as.numeric (as.character(bio12$mean))
+bio12$sd = as.numeric (as.character(bio12$sd))
+
+
+#ABOUT GGPLOT: 
+#' you have to FOR SURE understand the syntax of the package: 
+#' http://www.sthda.com/english/wiki/be-awesome-in-ggplot2-a-practical-guide-to-be-highly-effective-r-software-and-data-visualization#geom_errorbar-error-bars
+#' https://www.geeksforgeeks.org/plot-mean-and-standard-deviation-using-ggplot2-in-r/
+#' Other important points at the end of this section
+
+#' Ggplot is super conversome if you 
+#' ignore the syntax... thus here are details to get this plot together
+#' 
+
+#Mian plot, this is a dot plot so we define x and y, and also the categories: 
+bio1_graph = ggplot(bio1, aes(x=cat, y=mean, color = cat)) + 
+      geom_point()+
+      #manually changing the colors and modifying the legend: 
+      scale_color_manual(values = c('gold', 'darkred', 'brown1'), 
+                         guide = guide_legend(title= 'Sites', 
+                                              override.aes = list(size = 0.5)))+
+      #creating the error bars, I am using the variables from the database 
+      #notice with = 0 so no horizontal ticks appear in the error bars 
+      geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd, color = cat), width=0,
+                    position=position_dodge(0.05))+
+      #adding names to each axis and to the title 
+      xlab('Occurrences')+
+      ylab('Means +/- SD')+
+      ggtitle('BIO1')+
+      #eliminating the awful ggplot background and controling 
+      #the size of the labels and fonts and the position of tht title
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+            panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+            plot.title = element_text (size = 14, hjust = 0.5), 
+            axis.title=element_text(size=14), 
+            axis.text=element_text(size=11), 
+            legend.title = element_text(size=14),
+            legend.text = element_text(size=14))
+
+#now the other plots: 
+
+bio7_graph = ggplot(bio7, aes(x=cat, y=mean, color = cat)) + 
+  geom_point()+
+  #manually changing the colors and modifying the legend: 
+  scale_color_manual(values = c('gold', 'darkred', 'brown1'), 
+                     guide = guide_legend(title= 'Sites', 
+                                          override.aes = list(size = 0.5)))+
+  #creating the error bars, I am using the variables from the database 
+  #notice with = 0 so no horizontal ticks appear in the error bars 
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd, color = cat), width=0,
+                position=position_dodge(0.05))+
+  #adding names to each axis and to the title 
+  xlab('Occurrences')+
+  ylab('Means +/- SD')+
+  ggtitle('BIO7')+
+  #eliminating the awful ggplot background and controling 
+  #the size of the labels and fonts and the position of tht title
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+        plot.title = element_text (size = 14, hjust = 0.5), 
+        axis.title=element_text(size=14), 
+        axis.text=element_text(size=11), 
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=14))
+
+
+bio12_graph = ggplot(bio12, aes(x=cat, y=mean, color = cat)) + 
+  geom_point()+
+  #manually changing the colors and modifying the legend: 
+  scale_color_manual(values = c('gold', 'darkred', 'brown1'), 
+                     guide = guide_legend(title= 'Sites', 
+                                          override.aes = list(size = 0.5)))+
+  #creating the error bars, I am using the variables from the database 
+  #notice with = 0 so no horizontal ticks appear in the error bars 
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd, color = cat), width=0,
+                position=position_dodge(0.05))+
+  #adding names to each axis and to the title 
+  xlab('Occurrences')+
+  ylab('Means +/- SD')+
+  ggtitle('BIO12')+
+  #eliminating the awful ggplot background and controling 
+  #the size of the labels and fonts and the position of tht title
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+        plot.title = element_text (size = 14, hjust = 0.5), 
+        axis.title=element_text(size=14), 
+        axis.text=element_text(size=11), 
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=14))
+  
+
+#EXPORTING PDFs: 
+
+pdf (paste ('./env_values/bio1_graph', '.pdf', sep = ''), width = 10.5, height = 8, paper = 'letter')
+bio1_graph
+dev.off()
+
+
+pdf (paste ('./env_values/bio7_graph', '.pdf', sep = ''), width = 10.5, height = 8, paper = 'letter')
+bio7_graph
+dev.off()
+
+pdf (paste ('./env_values/bio12_graph', '.pdf', sep = ''), width = 10.5, height = 8, paper = 'letter')
+bio12_graph
+dev.off()
+
+#' Legend can be controlled from the theme argument
+#' https://www.statology.org/ggplot2-legend-size/
+#' Eliminating background depends highly on theme again where you can control 
+#' the size of different parts of the plot 
+#' 
+
+
+#RANDOMIZATION TEST - EVI--------------------------------------
+
+#DATA PREPARATION: 
+
+#' #rasters for 2019 and 2003 obtained through Google Earth: 
+
+evi2019 = raster ('./vegetation_cover/EVI/mean2019_evi.tif')
+evi2003 = raster ('./vegetation_cover/EVI/mean2003_evi.tif')
+
+#obtaining the difference: 
+dif1= evi2019 - evi2003
+
+#resample to experiment resolution:
+#' The data obtained is a 500 meters resolution, we need to change it to the 
+#' 5 arc/sec 
+#' resampling is done using one of the environmental predictors 
+#' because we want the resolution of the variables used in the 
+#' modeling to develop this experiment. 
+
+dif2= resample (dif1, amr1[[1]], method = 'bilinear') #raster ready for cropping: 
+
+
+#reading final model 
+hv1 = raster ('./DEF_MODEL/both_predictors.asc')
+
+#visualization: 
+par (mfrow = c(1,2))
+plot (hv1)
+plot (dif1)
+
+
+#raster cropping rasters function: 
+#' https://github.com/daromero-88/Gadgets-and-scripts-for-niche-modeling-/blob/main/mask_ras.R
+#' Data needed: raster 1, cropping raster, projection
+#' Here the WGS84 has the projection of from the wrld_spl build in the maptools package
+
+r2 = mask_ras(dif2, hv1, projection_def = WGS84)
+plot (r2)
+
+#writing difference raster: 
+writeRaster(r2, filename = './vegetation_cover_results/dif_evi_cropped', format = 'ascii', 
+            bylayer = T, suffix = './vegetation_cover_results/dif_evi_cropped', 
+            overwrite = T, NAflag = -9999)
+
+
+#RANDOMIZATION TEST ITSELF: 
+
+#obtaining observed statistic: 
+#' Change statistic accordingly
+#' You can select the code until 'CHANGE UP HERE' and replace
+#' median for mean, or other statistic
+
+evi_median = median(extract(r2, oro_thin[,3:4])) #sensitivity, number of points correctly predicted as present
+draws = dim(oro_thin)[1]
+
+#obtaining the values from the raster: 
+ex1 = data.frame(rasterToPoints(r2))
+#aa = is.na(ex1$layer) == TRUE #are any NA values? 
+#ex1$layer[aa] #no, there are no NAs
+
+
+#generating null models, n = 1000:
+
+evi_null = NULL #dataframe to be filled 
+
+#jj = 1 #debugging
+
+for (jj in 1:1000){
+  samp = sample(ex1$layer, draws, replace = TRUE)
+  stat1 = median(samp)
+  pre_df = cbind (rep = jj, stat = stat1) #joining a dataframe with the replicate and statistic
+  evi_null = rbind (evi_null, pre_df) #writing the results
+}
+
+
+#xx = range(c(max(evi_null[,2]), min(evi_null[,2]), evi_median)) #in case x limits are needed
+
+#dev.new()
+pdf (paste ('./vegetation_cover_results/evi_median', '.pdf', sep = ''), width = 10.5, height = 8, paper = 'letter')
+par(mar = c(10,4,3,3))
+hist (evi_null[,2], main = 'Randomization test \n\ EVI-median', 
+      xlab = 'Values of the median', col = 'grey')
+abline (v = evi_median, col = 'red')
+qn975 = quantile (evi_null[,2], probs = 0.975)
+qn025 = quantile (evi_null[,2], probs = 0.025)
+abline (v = qn975, lty = 3, col = 'black') 
+abline (v = qn025, lty = 3, col = 'black')
+dev.off()
+#model is statistically significant, observation is uncontained in the null distribution 
+
+
+#writing rasters and appropriate files: 
+
+#null distribution: 
+write.csv (evi_null, './vegetation_cover_results/evi_median_null.csv', row.names = F)
+
+'CHANGE UP HERE'
+
+
+#RANDOMIZATION TEST - NDVI--------------------------------------
+
+#DATA PREPARATION: 
+
+#' #rasters for 2019 and 2003 obtained through Google Earth: 
+
+ndvi2019 = raster ('./vegetation_cover/ndvi/mean2019_ndvi.tif')
+ndvi2003 = raster ('./vegetation_cover/ndvi/mean2003_ndvi.tif')
+
+#obtaining the difference: 
+dif_ndvi = ndvi2019 - ndvi2003
+
+#resample to experiment resolution:
+#' The data obtained is a 500 meters resolution, we need to change it to the 
+#' 5 arc/sec 
+#' resampling is done using one of the environmental predictors 
+#' because we want the resolution of the variables used in the 
+#' modeling to develop this experiment. 
+
+dif_ndvi2 = resample (dif_ndvi, amr1[[1]], method = 'bilinear') #raster ready for cropping: 
+
+#reading final model 
+hv1 = raster ('./DEF_MODEL/both_predictors.asc')
+
+#visualization: 
+par (mfrow = c(1,2))
+plot (hv1, main = 'model')
+plot (dif_ndvi2, main = 'ndvi')
+
+
+#raster cropping rasters function: 
+#' https://github.com/daromero-88/Gadgets-and-scripts-for-niche-modeling-/blob/main/mask_ras.R
+#' Data needed: raster 1, cropping raster, projection
+#' Here the WGS84 has the projection of from the wrld_spl build in the maptools package
+
+r3 = mask_ras(dif_ndvi2, hv1, projection_def = WGS84)
+plot (r3)
+
+#writing difference raster: 
+writeRaster(r3, filename = './vegetation_cover_results/dif_ndvi_cropped', format = 'ascii', 
+            bylayer = T, suffix = './vegetation_cover_results/dif_ndvi_cropped', 
+            overwrite = T, NAflag = -9999)
+
+
+#RANDOMIZATION TEST ITSELF: 
+
+#obtaining observed statistic: 
+#' Change statistic accordingly
+#' You can select the code until 'CHANGE UP HERE' and replace
+#' mean for mean, or other statistic
+
+ndvi_mean = mean(extract(r3, oro_thin[,3:4])) #sensitivity, number of points correctly predicted as present
+draws = dim(oro_thin)[1]
+
+#obtaining the values from the raster: 
+ex1 = data.frame(rasterToPoints(r3))
+#aa = is.na(ex1$layer) == TRUE #are any NA values? 
+#ex1$layer[aa] #no, there are no NAs
+
+
+#generating null models, n = 1000:
+
+ndvi_null = NULL #dataframe to be filled 
+
+#jj = 1 #debugging
+
+for (jj in 1:1000){
+  samp = sample(ex1$layer, draws, replace = TRUE)
+  stat1 = mean(samp)
+  pre_df = cbind (rep = jj, stat = stat1) #joining a dataframe with the replicate and statistic
+  ndvi_null = rbind (ndvi_null, pre_df) #writing the results
+}
+
+
+#xx = range(c(max(ndvi_null[,2]), min(ndvi_null[,2]), ndvi_mean)) #in case x limits are needed
+
+#dev.new()
+pdf (paste ('./vegetation_cover_results/ndvi_mean', '.pdf', sep = ''), width = 10.5, height = 8, paper = 'letter')
+par(mar = c(10,4,3,3))
+hist (ndvi_null[,2], main = 'Randomization test \n\ ndvi-mean', 
+      xlab = 'Values of the mean', col = 'grey')
+abline (v = ndvi_mean, col = 'red')
+qn975 = quantile (ndvi_null[,2], probs = 0.975)
+qn025 = quantile (ndvi_null[,2], probs = 0.025)
+abline (v = qn975, lty = 3, col = 'black') 
+abline (v = qn025, lty = 3, col = 'black')
+dev.off()
+#model is statistically significant if the observation is uncontained in the null distribution 
+
+
+#writing rasters and appropriate files: 
+
+#null distribution: 
+write.csv (ndvi_null, './vegetation_cover_results/ndvi_mean_null.csv', row.names = F)
+
+'CHANGE UP HERE'
+
+
+#POPULATION IN RISK - FULL DISTRIBUTION-----------------------
+
+#data: 
+#selected model: 
+hv1 = raster ('./DEF_MODEL/both_predictors.asc')
+
+#population data
+#obtained from: https://hub.worldpop.org/geodata/summary?id=24777
+
+pops = raster ('./pop_in_risk/ppp_2020_1km_Aggregated.tif')
+
+#cropping to the studied area
+
+pops_amr = crop(pops, amr)
+pops_amr2 = mask (pops_amr, amr) #changing the name prevent an important error
+
+plot (pops_amr2)
+
+#matching the resolution of the model: 
+pops_res = resample (pops_amr, amr1[[1]], method = 'bilinear')
+plot (pops_res)
+
+#cropping to the selected model: 
+#mask_rar function --> https://github.com/daromero-88/Gadgets-and-scripts-for-niche-modeling-/blob/main/mask_ras.R
+
+pop_def = mask_ras (pops_res, hv1, WGS84)
+plot (pop_def)
+
+writeRaster(pop_def, filename = './pop_in_risk/pop_cropped', format = 'ascii', 
+            bylayer = T, suffix = './pop_in_risk/pop_cropped', 
+            overwrite = T, NAflag = -9999)
+
+#obtaining global statistics: 
+pop_count = cellStats(pop_def, sum) #4944341
+
+
+#' PROXY OF LOCAL INDCIDENCE: 
+#' Numerator= population pixels in OROV province/state
+#' Denomiantor= population pixels in province/state
+#' Close to 1 --> more risk 
+#' Close to 0 --> less risk 
+
+#developing a chorolopeth map: 
+provs_df #shapefile with information of states/provinces in the Americas 
+
+#' checking the looping variable: 
+#' This variable is selected because it has values across the entire 
+#' dataframe because subet function does to accept NA as value descriptors
+
+colnames(provs_df@data)
+length (provs_df@data$woe_name) #669 provinces/states in the continent 
+
+#how many NAs are in the variable name: 
+aa = provs_df@data$adm1_code[is.na(provs_df@data$adm1_code)]
+length(aa) #0
+
+#' if needed, it is possible to eliminate the NAs in the shapefile instantly using 
+#' the following approach: there where 4 NAs in the name variable thus, a total of 665 rows 
+#' are recovered for the object prov3: 
+
+#prov3 = provs_df[!is.na(provs_df$name),]
+
+#I can create a data base with #665 entries and then add it to the shape file: 
+
+sts2 = NULL
+
+#w2 = provs_df@data$name[1] #debugging
+
+for (w2 in provs_df@data$adm1_code){
+  ss1 = subset (provs_df, adm1_code == w2)
+  #numerator: 
+  orov_pxl = crop (pop_def, ss1) #cropping from population in OROV distribution 
+  orov_pxl = mask (orov_pxl, ss1)
+  num1 = cellStats(orov_pxl, sum)
+  #denominator: 
+  tot_pxls = crop (pops_res, ss1) #cropping from overall population 
+  tot_pxls = mask (tot_pxls, ss1)
+  dem1 = cellStats(tot_pxls, sum)
+  #local incidence: 
+  li = num1/dem1
+  ct = as.character(ss1@data$geonunit)
+  nm = as.character(ss1@data$name)
+  code = as.character (ss1@data$adm1_code)
+  pre_df = cbind (cod = code, country = ct, second = nm, 
+                  pop_risk = num1, pop_tot = dem1, incid= li)
+  sts2 = rbind (sts2, pre_df)
+}
+
+#transforming to dataframe and fixing class 
+sts2 = data.frame (sts2)
+sts2$incid = as.numeric (as.character(sts2$inc)) #incidence as numeric 
+sts2$incid [is.na (sts2$incid)] = 0 #replacing NaN with 0 (created whenever 0/0=NaN)
+
+sts2$pop_risk = as.numeric (as.character(sts2$pop_risk)) #population in risk as numeric 
+sts2$pop_tot = as.numeric (as.character(sts2$pop_tot)) #population total as numeric 
+
+dim(sts2) #same length as state/province shape
+
+#Both datasets end with the same codes 
+tail (provs_df@data$adm1_code)
+tail (sts2$cod)
+
+#Adding data to shape: 
+provs3_db = cbind (provs_df@data, sts2) #full database 
+provs3 = SpatialPolygonsDataFrame(provs_df, provs3_db, match.ID = T) #transforming to shape file
+class(provs3)
+
+plot (provs3)
+colnames(provs3@data) #only columns 60-65
+
+#leaving only useful columns: 
+provs4 = provs3[,c(60:65)]
+colnames(provs4@data)
+
+#writing datbase and shapefile: 
+
+write.csv (provs4@data, './pop_in_risk/full_dist_database.csv', row.names = F) #database
+
+writeOGR(provs4, layer= 'provs4', 
+         dsn = './pop_in_risk/provs4', 
+         driver = 'ESRI Shapefile') #shapefile 
+
+
+
+#VISUALIZATION: 
+#reading the object so we can establish an sf object: 
+
+#defining a sf object for plotting: 
+ch1 = st_read('./pop_in_risk/provs4', quiet = TRUE)
+
+#defining a particular color palette 
+con_pal1 = colorRampPalette(c('#e7e1ef', '#dd1c77'))
+
+#checking the distribution of the variable I am looking for: 
+hist (provs4@data$incid) #it is convenient to break for quantiles 
+
+
+#plot: 
+plot (ch1['incid'], 
+      main = 'Local incidence', 
+      breaks = c(0, 0.001, 0.1, 0.2, 0.5, 0.7, 1),  
+      pal = con_pal1)
+
+
+
+#POPULATION IN RISK - OVERLAPPING ONLY-----------------------
+
+#data: 
+#selected model: 
+hv_overlap = raster ('./DEF_MODEL/overlap_only.asc')
+
+#population data
+#obtained from: https://hub.worldpop.org/geodata/summary?id=24777
+
+pops = raster ('./pop_in_risk/ppp_2020_1km_Aggregated.tif')
+
+#cropping to the studied area
+
+pops_amr = crop(pops, amr)
+pops_amr2 = mask (pops_amr, amr) #changing the name prevent an important error
+
+plot (pops_amr2)
+
+#matching the resolution of the model: 
+pops_res = resample (pops_amr, amr1[[1]], method = 'bilinear')
+plot (pops_res)
+
+#cropping to the selected model: 
+#mask_rar function --> https://github.com/daromero-88/Gadgets-and-scripts-for-niche-modeling-/blob/main/mask_ras.R
+
+pop_overlap = mask_ras (pops_res, hv_overlap, WGS84)
+plot (pop_overlap)
+
+writeRaster(pop_overlap, filename = './pop_in_risk/pop_crop_overlap', format = 'ascii', 
+            bylayer = T, suffix = './pop_in_risk/pop_crop_overlap', 
+            overwrite = T, NAflag = -9999)
+
+#obtaining global statistics: 
+(pop_count = cellStats(pop_overlap, sum)) #2409182
+
+
+#' PROXY OF LOCAL INDCIDENCE: 
+#' Numerator= population pixels in OROV province/state
+#' Denomiantor= population pixels in province/state
+#' Close to 1 --> more risk 
+#' Close to 0 --> less risk 
+
+#developing a chorolopeth map: 
+provs_df #shapefile with information of states/provinces in the Americas 
+
+#' checking the looping variable: 
+#' This variable is selected because it has values across the entire 
+#' dataframe because subet function does to accept NA as value descriptors
+
+colnames(provs_df@data)
+length (provs_df@data$woe_name) #669 provinces/states in the continent 
+
+#how many NAs are in the variable name: 
+aa = provs_df@data$adm1_code[is.na(provs_df@data$adm1_code)]
+length(aa) #0
+
+#' if needed, it is possible to eliminate the NAs in the shapefile instantly using 
+#' the following approach: there where 4 NAs in the name variable thus, a total of 665 rows 
+#' are recovered for the object prov3: 
+
+#prov3 = provs_df[!is.na(provs_df$name),]
+
+#I can create a data base with #665 entries and then add it to the shape file: 
+
+sts3 = NULL
+
+#w2 = provs_df@data$name[1] #debugging
+
+for (w2 in provs_df@data$adm1_code){
+  ss1 = subset (provs_df, adm1_code == w2)
+  #numerator: 
+  orov_pxl = crop (pop_overlap, ss1) #cropping from population in OROV distribution 
+  orov_pxl = mask (orov_pxl, ss1)
+  num1 = cellStats(orov_pxl, sum) 
+  #denominator: 
+  tot_pxls = crop (pops_res, ss1) #cropping from overall population 
+  tot_pxls = mask (tot_pxls, ss1)
+  dem1 = cellStats(tot_pxls, sum)
+  #local incidence: 
+  li = num1/dem1 #local incidence numerator/denominator
+  ct = as.character(ss1@data$geonunit) #country name 
+  nm = as.character(ss1@data$name) #province/state name 
+  code = as.character (ss1@data$adm1_code) #code for matching 
+  pre_df = cbind (cod = code, country = ct, second = nm, 
+                  pop_risk = num1, pop_tot = dem1, incid= li) 
+  sts3 = rbind (sts3, pre_df)
+}
+
+#transforming to dataframe and fixing class 
+sts3 = data.frame (sts3)
+sts3$incid = as.numeric (as.character(sts3$inc)) #incidence as numeric 
+sts3$incid [is.na (sts3$incid)] = 0 #replacing NaN with 0 (created whenever 0/0=NaN)
+
+sts3$pop_risk = as.numeric (as.character(sts3$pop_risk)) #population in risk as numeric 
+sts3$pop_tot = as.numeric (as.character(sts3$pop_tot)) #population total as numeric 
+
+dim(sts3) #same length as state/province shape
+
+#Both datasets end with the same codes 
+tail (provs_df@data$adm1_code)
+tail (sts3$cod)
+
+#Adding data to shape: 
+provs_overlap_dbs = cbind (provs_df@data, sts3) #full database 
+provs_overlap = SpatialPolygonsDataFrame(provs_df, provs_overlap_dbs, match.ID = T) #transforming to shape file
+class(provs_overlap)
+
+plot (provs_overlap)
+colnames(provs_overlap@data) #only columns 60-65
+
+#leaving only useful columns: 
+provs_overlap2 = provs_overlap[,c(60:65)]
+colnames(provs_overlap2@data)
+
+#writing datbase and shapefile: 
+
+write.csv (provs_overlap2@data, './pop_in_risk/overlap_only_database.csv', row.names = F) #database
+
+writeOGR(provs_overlap2, layer= 'provs_overlap2', 
+         dsn = './pop_in_risk/provs_overlap2', 
+         driver = 'ESRI Shapefile') #shapefile 
+
+
+#VISUALIZATION: 
+#reading the object so we can establish an sf object: 
+
+#defining a sf object for plotting: 
+ch2 = st_read('./pop_in_risk/provs_overlap2/', quiet = TRUE)
+
+#defining a particular color palette 
+con_pal1 = colorRampPalette(c('#e7e1ef', '#dd1c77'))
+
+#checking the distribution of the variable I am looking for: 
+
+hist (provs_overlap2@data$incid) #it is convenient to break for quantiles 
+
+
+#visualization: 
+
+plot (ch2['incid'], 
+      main = 'Local incidence', 
+      breaks = c(0, 0.001, 0.1, 0.2, 0.5, 0.7, 1),  
+      pal = con_pal1)
+
+
+#AND THIS IS IT :) 
 
