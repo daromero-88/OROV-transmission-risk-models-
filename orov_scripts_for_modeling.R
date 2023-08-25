@@ -416,7 +416,7 @@ write.csv (eval_in_g4_df, './HV_results/svm_g4_df.csv', row.names = T)
 ##a_median3 = overlay(a3, fun = median, na.rm = T) #PREVIOUS CODE NOT LONGER WORKING 
 
 a_median3 = calc(a3, fun = function(x) median(x)) #this will give me information of 0, 0.5 and 1, thus: 
-a_median3_def = a_median3>0.5 #leaving as 1 only values above 0.5 which is correct
+a_median3_def = a_median3>0 #leaving as 1 only values above 0.5 which is correct
                                    
 a_low3 = calc(a3, fun = function(x) {quantile(x,probs = c(0.025),na.rm=TRUE)}) #lower percentile raster across replicates
 a_high3 = calc(a3, fun = function(x) {quantile(x,probs = c(0.975),na.rm=TRUE)}) #higher percentile raster across replicates
@@ -605,7 +605,7 @@ write.csv (eval_ch_g3_df, './CH_results/chl_g3_df.csv', row.names = T)
 ##b_median3 = overlay(b3, fun = median, na.rm = T) #median across replicates  #PREVIOUS CODE NOT LONGER WORKING 
 
 b_median3 = calc(b3, fun = function(x) median(x)) #this will give me information of 0, 0.5 and 1, thus: 
-b_median3_def = b_median3>0.5 #leaving as 1 only values above 0.5 which is correct
+b_median3_def = b_median3>0 #leaving as 1 only values above 0.5 which is correct
                  
 b_low3 = calc(b3, fun = function(x) {quantile(x,probs = c(0.025),na.rm=TRUE)}) #higher percentile raster across replicates
 b_high3 = calc(b3, fun = function(x) {quantile(x,probs = c(0.975),na.rm=TRUE)}) #lower percentile raster across replicates
