@@ -409,14 +409,21 @@ write.csv (eval_in_e4_df, './HV_results/svm_e4_df.csv', row.names = T)
 write.csv (eval_in_g4_df, './HV_results/svm_g4_df.csv', row.names = T)
 
 #Writing rasters: 
+#' the way to calculate a median in a binarized map using overlay is not working
+#' I need to apply 2 lines in order to make it work, specifically, calculate the median                                   
+#' traditionally and then apply a threhsold to only select pixels above 0.5: 
+                                   
+##a_median3 = overlay(a3, fun = median, na.rm = T) #PREVIOUS CODE NOT LONGER WORKING 
 
-a_median3 = overlay(a3, fun = median, na.rm = T) #median raster across replicates
+a_median3 = calc(a3, fun = function(x) median(x)) #this will give me information of 0, 0.5 and 1, thus: 
+a_median3_def = a_median3>0.5 #leaving as 1 only values above 0.5 which is correct
+                                   
 a_low3 = calc(a3, fun = function(x) {quantile(x,probs = c(0.025),na.rm=TRUE)}) #lower percentile raster across replicates
 a_high3 = calc(a3, fun = function(x) {quantile(x,probs = c(0.975),na.rm=TRUE)}) #higher percentile raster across replicates
 a_dif3 = a_high3-a_low3 #difference between percentiles
 a_sum3 = a_high3+a_low3 #sum between percentiles 
 
-a_all3= stack (a_median3, a_low3, a_high3, a_dif3, a_sum3) #stack of developed models 
+a_all3= stack (a_median3_def, a_low3, a_high3, a_dif3, a_sum3) #stack of developed models 
 nm5 = c('median', 'low', 'high', 'range', 'sum') #names for the stack 
 
 #Wrting the rasters in a loop: 
@@ -591,14 +598,21 @@ write.csv (eval_ch_e3_df, './CH_results/chl_e3_df.csv', row.names = T)
 write.csv (eval_ch_g3_df, './CH_results/chl_g3_df.csv', row.names = T)
 
 #Definitive rasters: 
+#' the way to calculate a median in a binarized map using overlay is not working
+#' I need to apply 2 lines in order to make it work, specifically, calculate the median                                   
+#' traditionally and then apply a threhsold to only select pixels above 0.5: 
+                                   
+##b_median3 = overlay(b3, fun = median, na.rm = T) #median across replicates  #PREVIOUS CODE NOT LONGER WORKING 
 
-b_median3 = overlay(b3, fun = median, na.rm = T) #median across replicates 
+b_median3 = calc(b3, fun = function(x) median(x)) #this will give me information of 0, 0.5 and 1, thus: 
+b_median3_def = b_median3>0.5 #leaving as 1 only values above 0.5 which is correct
+                 
 b_low3 = calc(b3, fun = function(x) {quantile(x,probs = c(0.025),na.rm=TRUE)}) #higher percentile raster across replicates
 b_high3 = calc(b3, fun = function(x) {quantile(x,probs = c(0.975),na.rm=TRUE)}) #lower percentile raster across replicates
 b_dif3 = b_high3-b_low3 #difference between percentiles 
 b_sum3 = b_high3+b_low3 #sum between percentiles 
 
-b_all3= stack (b_median3, b_low3, b_high3, b_dif3, b_sum3) #stack of rasters 
+b_all3= stack (b_median3_def, b_low3, b_high3, b_dif3, b_sum3) #stack of rasters 
 nm5 = c('median', 'low', 'high', 'range', 'sum') #names for the rasters 
 
 #Wrting the rasters in a loop: 
